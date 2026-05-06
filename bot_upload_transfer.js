@@ -1,20 +1,13 @@
 // ===============================
-// BOT UPLOAD TRANSFER vFinal (COMMAND ONLY)
+// BOT UPLOAD TRANSFER - POLLING VERSION
 // ===============================
-import express from "express";
-import axios from "axios";
+import TelegramBot from "node-telegram-bot-api";
 import { google } from "googleapis";
-
-// Konfigurasi dasar
-const app = express();
-app.use(express.json());
-const PORT = process.env.PORT || 10000;
 
 // ======== ENVIRONMENT CHECK ========
 const { TELEGRAM_TOKEN, SPREADSHEET_ID, SHEET_NAME, GOOGLE_CREDENTIALS } = process.env;
-
 if (!TELEGRAM_TOKEN || !SPREADSHEET_ID || !SHEET_NAME || !GOOGLE_CREDENTIALS) {
-  console.error("❌ Missing environment variables. Pastikan semua sudah diset di Render!");
+  console.error("❌ Missing environment variables. Pastikan semua sudah diset!");
   process.exit(1);
 }
 
@@ -32,33 +25,30 @@ const client = new google.auth.JWT({
   key: credentials.private_key.replace(/\\n/g, "\n"),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
+
 const sheets = google.sheets({ version: "v4", auth: client });
 
-// ======== TELEGRAM API BASE ========
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
-const WEBHOOK_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}/webhook/${TELEGRAM_TOKEN}`;
-
-// ======== SET WEBHOOK ========
-(async () => {
-  try {
-    await axios.post(`${TELEGRAM_API}/setWebhook`, { url: WEBHOOK_URL });
-    console.log("✅ Webhook aktif di:", WEBHOOK_URL);
-  } catch (err) {
-    console.error("❌ Gagal set webhook:", err.message);
-  }
-})();
+// ======== TELEGRAM BOT (LONG POLLING — OPTIMIZED) ========
+const bot = new TelegramBot(TELEGRAM_TOKEN, {
+  polling: {
+    autoStart: false,
+    interval: 0,
+    params: {
+      timeout: 50,
+      allowed_updates: ["message"],
+    },
+  },
+});
 
 // ======== HANDLE MESSAGE (COMMAND ONLY) ========
-async function handleMessage(msg) {
+bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
-
   // Ambil caption atau text
   const text = msg.caption || msg.text;
   if (!text) return; // Abaikan pesan kosong
 
   // Regex ketat: hanya format username/kode/nominal
   const match = text.trim().match(/^([\w]+)\/([Tt]\d{2})\/(\d+)$/);
-
   if (!match) return; // Abaikan semua chat yang tidak sesuai format
 
   const nama = match[1].trim();
@@ -72,29 +62,31 @@ async function handleMessage(msg) {
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [[nama, kode, nominal]] },
     });
-
-    await sendMessage(chatId, `✅ DONE input ya:\nNama: ${nama}\nKode: ${kode}\nNominal: ${nominal}`);
+    await bot.sendMessage(
+      chatId,
+      `✅ [TEST] DONE input ya:\nNama: ${nama}\nKode: ${kode}\nNominal: ${nominal}`
+    );
   } catch (err) {
     console.error("❌ Gagal menyimpan:", err.message);
-    await sendMessage(chatId, "❌ Gagal menyimpan ke Google Sheets.");
+    await bot.sendMessage(chatId, "❌ [TEST] Gagal menyimpan ke Google Sheets.");
   }
-}
-
-// ======== SEND MESSAGE ========
-async function sendMessage(chatId, text) {
-  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text });
-}
-
-// ======== WEBHOOK HANDLER ========
-app.post(`/webhook/${TELEGRAM_TOKEN}`, async (req, res) => {
-  const body = req.body;
-  if (body.message) {
-    await handleMessage(body.message);
-  }
-  res.status(200).send("OK");
 });
 
-// ======== SERVER LISTEN ========
-app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di port ${PORT}`);
+// ======== ERROR HANDLER (network glitch, dll) ========
+bot.on("polling_error", (err) => {
+  console.error("⚠️ Polling error:", err.code, "-", err.message);
 });
+
+// ======== START POLLING ========
+(async () => {
+  try {
+    // Bersihin webhook lama dari setup Render
+    await bot.deleteWebHook({ drop_pending_updates: true });
+    // Start long polling
+    await bot.startPolling();
+    console.log("✅ [TEST] Bot UPLOAD TRANSFER aktif (polling mode)");
+  } catch (err) {
+    console.error("❌ Gagal start bot:", err.message);
+    process.exit(1);
+  }
+})();
