@@ -64,6 +64,7 @@ async function handleMessage(msg) {
   const nama = match[1].trim();
   const kode = match[2].trim();
   const nominal = match[3].trim();
+  const waktu + match[4].trim();
 
   try {
     await sheets.spreadsheets.values.append({
