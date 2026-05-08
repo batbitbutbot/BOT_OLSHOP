@@ -1,9 +1,13 @@
 // ===============================
-// BOT UPLOAD TRANSFER vFinal
+// BOT UPLOAD TRANSFER vFINAL
 // FORMAT:
 // NAMA/KODE/NOMINAL/WAKTU
+//
 // CONTOH:
-// BUDI/T12/50000/16.15
+// noirlucien/t04/50000/16.15
+//
+// BOT HANYA RESPON JIKA FORMAT VALID
+// CHAT BIASA AKAN DIABAIKAN
 // ===============================
 
 import express from "express";
@@ -16,7 +20,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 
-// ======== ENV CHECK ========
+// ======== ENVIRONMENT ========
 const {
   TELEGRAM_TOKEN,
   SPREADSHEET_ID,
@@ -24,6 +28,7 @@ const {
   GOOGLE_CREDENTIALS,
 } = process.env;
 
+// ======== VALIDASI ENV ========
 if (
   !TELEGRAM_TOKEN ||
   !SPREADSHEET_ID ||
@@ -34,7 +39,7 @@ if (
   process.exit(1);
 }
 
-// ======== GOOGLE SHEETS SETUP ========
+// ======== GOOGLE CREDENTIALS ========
 let credentials;
 
 try {
@@ -44,6 +49,7 @@ try {
   process.exit(1);
 }
 
+// ======== GOOGLE SHEETS AUTH ========
 const client = new google.auth.JWT({
   email: credentials.client_email,
   key: credentials.private_key.replace(/\\n/g, "\n"),
@@ -95,32 +101,27 @@ async function handleMessage(msg) {
   // Ambil text / caption
   const text = msg.text || msg.caption;
 
+  // Jika kosong -> abaikan
   if (!text) return;
 
-  // ===== FORMAT =====
-  // NAMA/KODE/NOMINAL/WAKTU
-  // CONTOH:
-  // BUDI/T12/50000/16.15
+  // ===== FORMAT VALID =====
+  // nama/t04/50000/16.15
 
   const match = text.trim().match(
     /^([\w]+)\/([Tt]\d{2})\/(\d+)\/(\d{2}\.\d{2})$/
   );
 
-  // Jika format salah -> abaikan
-  if (!match) {
-    return await sendMessage(
-      chatId,
-      "❌ Format salah!\n\nGunakan:\nNAMA/KODE/NOMINAL/WAKTU\n\nContoh:\nBUDI/T12/50000/16.15"
-    );
-  }
+  // Jika bukan format valid -> diam
+  if (!match) return;
 
+  // ===== AMBIL DATA =====
   const nama = match[1].trim();
   const kode = match[2].trim();
   const nominal = match[3].trim();
   const waktu = match[4].trim();
 
   try {
-    // ===== SAVE TO SHEETS =====
+    // ===== INPUT KE SHEETS =====
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_NAME}!A:D`,
@@ -130,7 +131,7 @@ async function handleMessage(msg) {
       },
     });
 
-    // ===== SUCCESS MESSAGE =====
+    // ===== RESPON SUKSES =====
     await sendMessage(
       chatId,
       `✅ DONE input ya:
@@ -140,6 +141,7 @@ Kode: ${kode}
 Nominal: ${nominal}
 Waktu: ${waktu}`
     );
+
   } catch (err) {
     console.error("❌ Gagal simpan:", err.message);
 
@@ -166,7 +168,7 @@ app.post(`/webhook/${TELEGRAM_TOKEN}`, async (req, res) => {
   }
 });
 
-// ======== HOME ========
+// ======== ROOT ========
 app.get("/", (req, res) => {
   res.send("✅ BOT RUNNING");
 });
